@@ -476,6 +476,36 @@ namespace GoldenSyrupGames.T2MD
             IOrderedEnumerable<TrelloCardModel> orderedCards = trelloBoard.Cards.OrderBy(
                 card => card.Pos
             );
+            
+            // Create a special list for orphaned cards (cards with no valid parent list)
+            // Always create this list to handle any orphaned cards that might exist
+            var orphanedCardsList = new TrelloListModel
+            {
+                ID = "orphaned-cards-list",
+                Name = "Orphaned Cards",
+                Closed = false,
+                Pos = 999999 // Position at the end
+            };
+            
+            // Create folders for the orphaned cards list
+            string orphanedListPath = Path.Combine(boardPath, "Orphaned Cards");
+            Directory.CreateDirectory(orphanedListPath);
+            orphanedCardsList.FolderPath = orphanedListPath;
+            
+            string orphanedArchivedPath = Path.Combine(orphanedListPath, "archived");
+            Directory.CreateDirectory(orphanedArchivedPath);
+            orphanedCardsList.ArchiveFolderPath = orphanedArchivedPath;
+            
+            // Check if there are any orphaned cards
+            bool hasOrphanedCards = orderedCards.Any(card => 
+                !trelloBoard.Lists.Any(list => list.ID == card.IDList));
+                
+            if (hasOrphanedCards)
+            {
+                // Add it to the board's lists only if orphaned cards exist
+                trelloBoard.Lists.Add(orphanedCardsList);
+                AnsiConsole.MarkupLine($"    [yellow]Created special list for orphaned cards[/]");
+            }
 
             // differentiate duplicate cards. Do it per list because lists will become folders,
             // cards will become files and that makes the most sense for the user
@@ -488,9 +518,10 @@ namespace GoldenSyrupGames.T2MD
             var CardTasks = new List<Task>();
             foreach (TrelloCardModel trelloCard in orderedCards)
             {
+                // Try to find the parent list, use the orphaned list if not found
                 TrelloListModel parentList = trelloBoard.Lists
                     .Where(list => list.ID == trelloCard.IDList)
-                    .First();
+                    .FirstOrDefault() ?? orphanedCardsList;
 
                 // give the card the right index and path depending on whether it's archived or not.
                 // outside the function because they're all running in parallel and would read the
